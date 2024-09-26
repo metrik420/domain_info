@@ -190,14 +190,54 @@ fi
 # Perform website availability check if the flag is set to true.
 if $CHECK_WEBSITE; then
     {
-        # Use 'curl' to check the HTTP status code of the website.
-        HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" "http://$DOMAIN")
+        # Use 'curl' to check the HTTP status code and response time of the website.
+        HTTP_RESPONSE=$(curl -s -o /dev/null -w "%{http_code} %{time_total}" "http://$DOMAIN")
+        HTTP_STATUS=$(echo "$HTTP_RESPONSE" | awk '{print $1}')
+        RESPONSE_TIME=$(echo "$HTTP_RESPONSE" | awk '{print $2}')
+
+        # Check if the website is up or down based on HTTP status code.
         if [ "$HTTP_STATUS" -eq "200" ]; then
-            append_results "\n[\e[93mWebsite Status\e[0m]: Website is UP (HTTP Status Code: $HTTP_STATUS)\n"
+            append_results "\n[\e[93mWebsite Status\e[0m]: Website is UP (HTTP Status Code: $HTTP_STATUS, Response Time: ${RESPONSE_TIME}s)\n"
         else
-            append_results "\n[\e[93mWebsite Status\e[0m]: Website is DOWN or unreachable (HTTP Status Code: $HTTP_STATUS)\n"
+            append_results "\n[\e[93mWebsite Status\e[0m]: Website is DOWN or unreachable (HTTP Status Code: $HTTP_STATUS, Response Time: ${RESPONSE_TIME}s)\n"
         fi
-    } & 
+
+        # Perform HTTPS check to ensure SSL/TLS availability.
+        HTTPS_STATUS=$(curl -o /dev/null -s -w "%{http_code}" "https://$DOMAIN")
+        if [ "$HTTPS_STATUS" -eq "200" ]; then
+            append_results "\n[\e[93mHTTPS Status\e[0m]: HTTPS is working (HTTP Status Code: $HTTPS_STATUS)\n"
+        else
+            append_results "\n[\e[93mHTTPS Status\e[0m]: HTTPS is not available or has issues (HTTP Status Code: $HTTPS_STATUS)\n"
+        fi
+
+        # Check for SSL certificate expiration if HTTPS is available.
+        if command_exists openssl; then
+            EXPIRATION_DATE=$(echo | openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null | openssl x509 -noout -dates | grep 'notAfter')
+            if [ -n "$EXPIRATION_DATE" ]; then
+                append_results "\n[\e[93mSSL Certificate Status\e[0m]: $EXPIRATION_DATE\n"
+            else
+                append_results "\n[\e[93mSSL Certificate Status\e[0m]: Unable to retrieve SSL certificate expiration date.\n"
+            fi
+        else
+            append_results "\n[\e[93mSSL Certificate Status\e[0m]: 'openssl' is not installed, skipping SSL certificate check.\n"
+        fi
+
+        # Check website's redirect chain (if applicable).
+        REDIRECT_CHAIN=$(curl -sIL "http://$DOMAIN" | grep -i "Location:")
+        if [ -n "$REDIRECT_CHAIN" ]; then
+            append_results "\n[\e[93mRedirect Chain\e[0m]: Detected the following redirects:\n$REDIRECT_CHAIN\n"
+        else
+            append_results "\n[\e[93mRedirect Chain\e[0m]: No redirects detected.\n"
+        fi
+
+        # Check for website content (basic keyword match to see if it’s loading correctly).
+        HOMEPAGE_CONTENT=$(curl -sL "http://$DOMAIN")
+        if [[ "$HOMEPAGE_CONTENT" == *"DOCTYPE html"* ]]; then
+            append_results "\n[\e[93mContent Check\e[0m]: Website content appears valid.\n"
+        else
+            append_results "\n[\e[93mContent Check\e[0m]: Website content may be missing or invalid.\n"
+        fi
+    } &
     website_pid=$!
 fi
 

@@ -299,14 +299,42 @@ fi
 # Perform DNS Blacklist check if the flag is set to true.
 if $CHECK_DNS_BLACKLIST; then
     {
-        # List of common DNS blacklists to check.
-        BL_LIST=("sbl.spamhaus.org" "xbl.spamhaus.org" "pbl.spamhaus.org" "dnsbl.sorbs.net" "bl.spamcop.net")
+        # List of extended common DNS blacklists to check.
+        BL_LIST=(
+            "sbl.spamhaus.org"        # Spamhaus SBL
+            "xbl.spamhaus.org"        # Spamhaus XBL
+            "pbl.spamhaus.org"        # Spamhaus PBL
+            "dnsbl.sorbs.net"         # SORBS DNSBL
+            "bl.spamcop.net"          # SpamCop
+            "zen.spamhaus.org"        # Spamhaus ZEN
+            "b.barracudacentral.org"  # Barracuda Reputation Block List
+            "dnsbl-1.uceprotect.net"  # UCEPROTECT Level 1
+            "dnsbl-2.uceprotect.net"  # UCEPROTECT Level 2
+            "dnsbl-3.uceprotect.net"  # UCEPROTECT Level 3
+            "all.s5h.net"             # S5H DNSBL
+            "dnsbl.inps.de"           # INPS DNSBL
+            "dnsbl.sorbs.net"         # SORBS Aggregate zone
+            "bl.mailspike.net"        # Mailspike Blacklist
+            "ubl.unsubscore.com"      # Unsubscore UBL
+            "rbl.realtimeblacklist.com" # Real-time Blacklist
+            "dnsbl.justspam.org"      # JustSpam DNSBL
+            "psbl.surriel.com"        # Passive Spam Block List (PSBL)
+        )
+
+        # Iterate over the list of DNS blacklists and check each one.
         for blacklist in "${BL_LIST[@]}"; do
             BL_STATUS=$(nslookup -q=a "$DOMAIN" "$blacklist" 2>/dev/null)
+
+            # Check if the domain is listed in the blacklist (127.x.x.x IPs indicate blacklisting).
             if [[ "$BL_STATUS" == *"127."* ]]; then
                 append_results "\n[\e[91mDNS Blacklist Check\e[0m]: $DOMAIN is listed on $blacklist\n"
             else
                 append_results "\n[\e[91mDNS Blacklist Check\e[0m]: $DOMAIN is NOT listed on $blacklist\n"
+            fi
+
+            # Handle potential errors or issues with the nslookup command.
+            if [[ -z "$BL_STATUS" ]]; then
+                append_results "\n[\e[93mDNS Blacklist Check\e[0m]: Unable to query $blacklist for $DOMAIN (no response or error)\n"
             fi
         done
     } & 
